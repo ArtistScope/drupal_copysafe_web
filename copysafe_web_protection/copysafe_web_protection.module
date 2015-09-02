@@ -1,0 +1,774 @@
+<?php
+/**
+ * @file
+ * copysafe_web_protection module
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function copysafe_web_protection_menu() {
+  $items = array();
+
+  $items['copysafe_web_protection/%ctools_js/copysafe_web_protection/form/%'] = array(
+    'title' => 'AJAX modal dialog',
+    'page callback' => 'copysafe_web_protection_popup',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['copysafe_web_protection/%ctools_js/class/%'] = array(
+    'title' => 'Options',
+    'description' => 'Ctools call back',
+    'page callback' => 'copysafe_web_protection_class',
+    'page arguments' => array(1),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/copysafe'] = array(
+    'title' => 'CopySafe',
+    'page callback' => 'system_admin_menu_block_page',
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/copysafe/copysafe_web_protection'] = array(
+    'title' => 'CopySafe Web',
+    'description' => 'Copy protect images and other web page media. Safe from all copy including Print Screen and screen capture.',
+    'page callback' => 'copysafe_web_protection_config',
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/copysafe/copysafe_web_protection/list'] = array(
+    'title' => 'CopySafe Web Files',
+    'description' => 'Copy protect images and other web page media. Safe from all copy including Print Screen and screen capture.',
+    'page callback' => 'copysafe_web_protection_config',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'access arguments' => array('administer site configuration'),
+    // 'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/config/copysafe/copysafe_web_protection/settings'] = array(
+    'title' => 'CopySafe Web Settings',
+    'page callback' => 'copysafe_web_protection_settings',
+    'access callback' => TRUE,
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['copysafe_web_protection/file_delete/%'] = array(
+    'description' => 'description',
+    'page callback' => 'copysafe_web_protection_delete',
+    'page arguments' => array(1),
+    'access arguments' => array('administer site configuration'),
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Add 'Embed CopySafeWeb' option to the textarea.
+ *
+ * @see user_admin_settings()
+ */
+function copysafe_web_protection_element_info_alter(&$types) {
+  $types['textarea']['#post_render'][] = 'copysafe_web_protection_post_render';
+}
+
+/**
+ * Function() to render 'Embed CopySafe Web' option in textarea.
+ */
+function copysafe_web_protection_post_render($content, $element) {
+  if (isset($element['#entity_type']) && isset($element['#bundle'])) {
+    if ($element['#entity_type'] == "node") {
+      $content = copysafe_web_protection_embed($content, $element);
+    }
+  }
+  return $content;
+}
+
+/**
+ * Function() for the popup containing CopySafe File Upload and Settings.
+ */
+function copysafe_web_protection_embed($content, $element) {
+  $name = $element['#id'];
+  ctools_include('ajax');
+  ctools_include('modal');
+  ctools_modal_add_js();
+
+  $custom_style = array(
+    'my-copysafe_web_protection-style' => array(
+      'modalSize' => array(
+        'type' => 'fixed',
+        'width' => 900,
+        'height' => 600,
+      ),
+      'animation' => 'fadeIn',
+    ),
+  );
+  drupal_add_js($custom_style, 'setting');
+  drupal_add_css(drupal_get_path('module', 'copysafe_web_protection') . '/copysafe_web_protection.css');
+  $output = ctools_modal_text_button(t('Embed CopySafeWeb'), 'copysafe_web_protection/nojs/copysafe_web_protection/form/' . $name,
+                                          t('Pop me up'), 'qembedlink qembed_' . $name, 'ctools-modal-my-copysafe_web_protection-style');
+  $output .= '<div id="modal-message">&nbsp</div>';
+  ctools_include('plugins');
+  $content = $output . $content;
+  return $content;
+}
+
+/**
+ * Callback for hook_menu().
+ */
+function copysafe_web_protection_popup($js = NULL) {
+  if (!$js) {
+    return drupal_get_form('copysafe_web_protection_form');
+  }
+  ctools_include('modal');
+  ctools_include('ajax');
+  $form_state = array(
+    'title' => t('Add new encrypted class file'),
+    'ajax' => TRUE,
+  );
+  $output = ctools_modal_form_wrapper('copysafe_web_protection_form', $form_state);
+  if (!empty($form_state['executed'])) {
+    $fid = $form_state['complete form']['custom_field_name']['image']['#file'];
+    $output = array();
+    $form_state = array(
+      'title' => 'File embed options for ' . $fid->filename,
+      'ajax' => TRUE,
+      'filename' => $fid->filename,
+    );
+    $output = ctools_modal_form_wrapper('copysafe_web_protection_class_form', $form_state);
+    if (!empty($form_state['executed'])) {
+      $output = array();
+      $output[] = ctools_modal_command_dismiss(t('Success!'));
+    }
+  }
+  print ajax_render($output);
+  exit;
+}
+
+/**
+ * Implements hook_form().
+ *
+ * File Upload Field and table listing files.
+ */
+function copysafe_web_protection_form($form, $form_state) {
+  drupal_add_js(drupal_get_path('module', 'copysafe_web_protection') . '/copysafe_web_protection_back.js');
+  $settings['copysafe_web_protection']['buttons']["qembed"] = "qembed";
+  $settings['copysafe_web_protection']['values']["width"] = variable_get('copysafe_web_protection_width', '');
+  $settings['copysafe_web_protection']['values']["height"] = variable_get('copysafe_web_protection_height', '');
+  $settings['copysafe_web_protection']['values']["border"] = variable_get('copysafe_web_protection_bordersize', '0');
+  $settings['copysafe_web_protection']['values']["border_color"] = variable_get('copysafe_web_protection_bordercolor', 'FFFFFF');
+  $settings['copysafe_web_protection']['values']["text_color"] = variable_get('copysafe_web_protection_textcolor', 'CCCCCC');
+
+  $default = array(
+    'capture' => 0,
+    'menus' => 0,
+    'remote' => 0,
+    'keyboard' => 0,
+  );
+  $arr = variable_get('copysafe_web_protection_prevent', $default);
+  foreach ($arr as $key => $val) {
+    if ($val == '0') {
+      $settings['copysafe_web_protection']['values'][$key] = 0;
+    }
+    else {
+      $settings['copysafe_web_protection']['values'][$key] = 1;
+    }
+  }
+  $settings['copysafe_web_protection']['values']["loading_message"] = variable_get('copysafe_web_protection_loading', 'loading');
+  $settings['copysafe_web_protection']['values']["hyperlink"] = variable_get('copysafe_web_protection_hyperlink', '/next.php');
+  $settings['copysafe_web_protection']['values']["target"] = variable_get('copysafe_web_protection_target', '_self');
+  drupal_add_js($settings, array('type' => 'setting'));
+  drupal_add_js(array('copysafe_web_protection' => array('clicked' => arg(4))), 'setting');
+
+  ctools_include('ajax');
+  ctools_include('modal');
+  ctools_modal_add_js();
+  ctools_include('plugins');
+  $custom_style = array(
+    'my-copysafe_web_protection-style' => array(
+      'modalSize' => array(
+        'type' => 'fixed',
+        'width' => 900,
+        'height' => 600,
+      ),
+      'animation' => 'fadeIn',
+    ),
+  );
+  drupal_add_js($custom_style, 'setting');
+
+  $form['custom_field_name']['image'] = array(
+    '#type' => 'managed_file',
+    '#title' => t('File Upload'),
+    '#upload_validators' => array(
+      'file_validate_extensions' => array(0 => 'class'),
+    ),
+    '#upload_location' => 'public://' . variable_get('copysafe_web_protection_uploadfolder', 'upload_folder/copysafe_web_protection') . '/',
+    '#description' => t("Upload a '.class' file."),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#attributes' => array('class' => array('copysafe_web_protection_file_save')),
+    '#submit' => array('copysafe_web_protection_form_submit'),
+  );
+
+  $result = db_query("SELECT * FROM {file_managed}");
+
+  $header = array();
+  $header[] = array('data' => 'File', 'field' => 'filename');
+  $header[] = array('data' => 'Size', 'field' => 'filesize');
+  $header[] = array('data' => 'Date', 'field' => 'timestamp');
+  $header[] = array('data' => 'Insert');
+
+  $data = array();
+  foreach ($result as $record) {
+    if (strpos($record->uri, 'public://upload_folder/copysafe_web_protection') !== FALSE) {
+      $size = round($record->filesize / 1024, 2) . "KB";
+      $date = date('d-m-Y H:i:s', $record->timestamp);
+
+      $insert = ctools_modal_text_button(t('Embed options'), 'copysafe_web_protection/nojs/class/' . $record->fid,
+                                              t('Pop me up'), 'ctools-modal-my-copysafe_web_protection-style');
+      $insert .= '<div id="modal-message">&nbsp</div>';
+
+      $name = '<a href="#" class="qembed">' . $record->filename . '</a>';
+
+      $data[$record->fid] = array($name,$size,$date,$insert);
+    }
+  }
+  $html = theme('table', array('header' => $header, 'rows' => $data));
+
+  $form['html'] = array(
+    '#type' => 'markup',
+    '#markup' => $html,
+  );
+  return $form;
+}
+
+/**
+ * Submit validator for copysafe_web_protection_form().
+ */
+function copysafe_web_protection_form_submit(&$form, $form_state) {
+  $fid = $form_state['values']['image'];
+  $file = file_load($fid);
+  file_create_url($file->uri);
+  $file->status = FILE_STATUS_PERMANENT;
+  file_save($file);
+}
+
+/**
+ * Callback for hook_menu().
+ */
+function copysafe_web_protection_class($js = NULL) {
+  $fid = arg(3);
+  $file = file_load($fid);
+  $filename = $file->filename;
+
+  if (!$js) {
+    return drupal_get_form('copysafe_web_protection_class_form');
+  }
+  ctools_include('modal');
+  ctools_include('ajax');
+  $form_state = array(
+    'title' => 'File embed options for ' . $filename,
+    'ajax' => TRUE,
+    'filename' => $file->filename,
+  );
+  $output = ctools_modal_form_wrapper('copysafe_web_protection_class_form', $form_state);
+  if (!empty($form_state['executed'])) {
+    $output = array();
+    $output[] = ctools_modal_command_dismiss(t('Success!'));
+  }
+  print ajax_render($output);
+  exit;
+}
+
+/**
+ * Implements hook_form().
+ *
+ * File Embed Options Form
+ */
+function copysafe_web_protection_class_form($form, $form_state) {
+
+  $form['filename'] = array(
+    '#type' => 'textfield',
+    '#default_value' => $form_state['filename'],
+    '#title' => t('File Name'),
+    '#disabled' => TRUE,
+  );
+  $form['width'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_width', ''),
+    '#title' => t('Width'),
+    '#size' => 20,
+    '#field_suffix' => t('(in pixels - leave blank to use filename settings)'),
+  );
+  $form['height'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_height', ''),
+    '#title' => t('Height'),
+    '#size' => 20,
+    '#field_suffix' => t('(in pixels)'),
+  );
+  $form['bordersize'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_bordersize', '0'),
+    '#title' => t('Border size'),
+    '#size' => 20,
+    '#field_suffix' => t('(in pixels)'),
+  );
+  $form['bordercolor'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_bordercolor', 'FFFFFF'),
+    '#title' => t('Border color'),
+    '#size' => 20,
+    '#field_suffix' => t('(without the #)'),
+  );
+  $form['textcolor'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_textcolor', 'CCCCCC'),
+    '#title' => t('Text color'),
+    '#size' => 20,
+    '#field_suffix' => t('(without the #)'),
+  );
+
+  $form['prevent'] = array(
+    '#type' => 'checkboxes',
+    '#default_value' => variable_get('copysafe_web_protection_prevent', array()),
+    '#title' => t('Prevent'),
+    '#options' => array(
+      'capture' => t('Prevent Capture'),
+      'keyboard' => t('Prevent Keyboard'),
+      'menus' => t('Prevent Menus'),
+      'remote' => t('Prevent Remote'),
+    ),
+  );
+  $form['loading'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_loading', 'loading'),
+    '#title' => t('Loading message'),
+  );
+  $form['hyperlink'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_hyperlink', '/next.php'),
+    '#title' => t('Hyperlink'),
+  );
+  $form['target'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_target', '_self'),
+    '#title' => t('Target frame'),
+  );
+  $form['insertcode'] = array(
+    '#type' => 'submit',
+    '#value' => t('Insert'),
+    '#submit' => array('copysafe_web_protection_class_form_submit'),
+  );
+  $form['cancel'] = array(
+    '#type' => 'submit',
+    '#value' => t('Cancel'),
+    '#submit' => array('copysafe_web_protection_class_form_cancel'),
+  );
+  return $form;
+}
+
+/**
+ * Submit validator for individual file settings form().
+ */
+function copysafe_web_protection_class_form_submit($form, $form_state) {
+  $filename = $form_state['values']['filename'];
+  variable_set('filename', $filename);
+  $width = $form_state['values']['width'];
+  variable_set('copysafe_web_protection_width', $width);
+  $height = $form_state['values']['height'];
+  variable_set('copysafe_web_protection_height', $height);
+  $bordersize = $form_state['values']['bordersize'];
+  variable_set('copysafe_web_protection_bordersize', $bordersize);
+  $bordercolor = $form_state['values']['bordercolor'];
+  variable_set('copysafe_web_protection_bordercolor', $bordercolor);
+  $textcolor = $form_state['values']['textcolor'];
+  variable_set('copysafe_web_protection_textcolor', $textcolor);
+  $prevent = $form_state['values']['prevent'];
+  variable_set('copysafe_web_protection_prevent', $prevent);
+  $loading = $form_state['values']['loading'];
+  variable_set('copysafe_web_protection_loading', $loading);
+  $hyperlink = $form_state['values']['hyperlink'];
+  variable_set('copysafe_web_protection_hyperlink', $hyperlink);
+  $target = $form_state['values']['target'];
+  variable_set('copysafe_web_protection_target', $target);
+}
+
+/**
+ * Cancel button function().
+ */
+function copysafe_web_protection_class_form_cancel() {
+
+}
+
+/**
+ * Callback for hook_menu().
+ */
+function copysafe_web_protection_config() {
+  return drupal_get_form('copysafe_web_protection_config_form');
+}
+
+/**
+ * Implements hook_form().
+ *
+ * File Upload Field listing files for CopySafe Web Configuration.
+ */
+function copysafe_web_protection_config_form($form, $form_state) {
+  $form['custom_field_name']['image'] = array(
+    '#type' => 'managed_file',
+    '#title' => t('File Upload'),
+    '#upload_validators' => array(
+      'file_validate_extensions' => array(0 => 'class'),
+       // 'file_validate_size' => array(600),
+       // 'file_validate_image_resolution' => array('64x64', '10x10'),
+    ),
+    '#upload_location' => 'public://' . variable_get('copysafe_web_protection_uploadfolder', 'upload_folder/copysafe_web_protection') . '/',
+    '#description' => t("Upload a '.class' file."),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#submit' => array('copysafe_web_protection_form_submit'),
+  );
+
+  $result = db_query("SELECT * FROM {file_managed}");
+
+  $header = array();
+  $header[] = array('data' => 'File', 'field' => 'filename');
+  $header[] = array('data' => 'Size', 'field' => 'filesize');
+  $header[] = array('data' => 'Date', 'field' => 'timestamp');
+  $header[] = array('data' => 'Delete');
+
+  $data = array();
+  foreach ($result as $record) {
+    if (strpos($record->uri, 'public://upload_folder/copysafe_web_protection') !== FALSE) {
+      $size = round($record->filesize / 1024, 2) . "KB";
+      $date = date('d-m-Y H:i:s', $record->timestamp);
+      $file = url('copysafe_web_protection/file_delete/');
+      $del = '<a href="' . $file . $record->fid . '">Delete</a>';
+      $data[$record->fid] = array($record->filename, $size, $date, $del);
+    }
+  }
+  $html = theme('table', array('header' => $header, 'rows' => $data));
+
+  $form['html'] = array(
+    '#type' => 'markup',
+    '#markup' => $html,
+  );
+
+  return $form;
+}
+
+/**
+ * Submit validator for copysafe_web_protection_config_form.
+ */
+function copysafe_web_protection_config_form_submit(&$form, $form_state) {
+  $fid = $form_state['values']['image'];
+  $file = file_load($fid);
+  file_create_url($file->uri);
+  $file->status = FILE_STATUS_PERMANENT;
+  file_save($file);
+}
+
+/**
+ * Callback for hook_menu().
+ */
+function copysafe_web_protection_delete() {
+  return drupal_get_form('copysafe_web_protection_delete_form');
+}
+
+/**
+ * Confirmation form for delete.
+ */
+function copysafe_web_protection_delete_form($form, $form_state) {
+  $form['html'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p>Are you sure that you want to delete? </p>',
+  );
+
+  $form['delete'] = array(
+    '#type' => 'submit',
+    '#value' => t('Delete'),
+    '#submit' => array('copysafe_web_protection_delete_form_delete'),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Cancel'),
+    '#submit' => array('copysafe_web_protection_delete_form_cancel'),
+  );
+
+  return $form;
+}
+
+/**
+ * Delete for confirmed.
+ */
+function copysafe_web_protection_delete_form_delete($fid) {
+  $val = arg(2);
+  db_query("DELETE FROM {file_managed} where fid=$val");
+  drupal_goto('admin/config/copysafe/copysafe_web_protection/list');
+}
+
+/**
+ * Cancel for confirmed .
+ */
+function copysafe_web_protection_delete_form_cancel() {
+  drupal_goto('admin/config/copysafe/copysafe_web_protection/list');
+}
+
+/**
+ * Callback for hook_menu().
+ */
+function copysafe_web_protection_settings() {
+  return drupal_get_form('copysafe_web_protection_settings_form');
+}
+
+/**
+ * Implements hook_form().
+ *
+ * CopSafe Web Settings form of the admin Configuration.
+ */
+function copysafe_web_protection_settings_form($form, $form_state) {
+
+  $form['uploadfolder'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_uploadfolder', 'upload_folder/copysafe_web_protection'),
+    '#title' => t('Upload Folder'),
+    '#field_prefix' => t('sites/default/files/'),
+    '#required' => TRUE,
+  );
+
+  $form['size'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('copysafe_web_protection_size', ''),
+    '#title' => t('Maximum Upload Size'),
+    '#field_suffix' => t('KB'),
+  );
+
+  $form['mode'] = array(
+    '#type' => 'select',
+    '#default_value' => variable_get('copysafe_web_protection_mode', ''),
+    '#options' => array(
+      'demo' => t('Demo Mode'),
+      'licensed' => t('Licensed'),
+      'debug' => t('Debugging Mode'),
+    ),
+    '#title' => t('Mode'),
+  );
+
+  $options = array(
+    'ie' => t('Allow IE'),
+    'firefox' => t('Allow Firefox'),
+    'chrome' => t('Allow Chrome'),
+    'navigator' => t('Allow Navigator'),
+    'opera' => t('Allow Opera'),
+    'safari' => t('Allow Safari'),
+  );
+
+  $default = array(
+    'ie' => 'ie',
+    'firefox' => 'firefox',
+    'chrome' => 'chrome',
+    'navigator' => 'navigator',
+    'opera' => 'opera',
+    'safari' => 'safari',
+  );
+
+  $form['browser'] = array(
+    '#title' => t('Select Browsers'),
+    '#type' => 'checkboxes',
+    '#default_value' => variable_get('copysafe_web_protection_browser', $default),
+    '#options' => $options,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+
+  return $form;
+}
+
+/**
+ * Submit validator for copysafe_web_protection_settings_form.
+ */
+function copysafe_web_protection_settings_form_submit($form, $form_state) {
+  // print_r($form_state);die();
+  $folder = $form_state['values']['uploadfolder'];
+  variable_set('copysafe_web_protection_uploadfolder', $folder);
+  $size = $form_state['values']['size'];
+  variable_set('copysafe_web_protection_size', $size);
+  $mode = $form_state['values']['mode'];
+  variable_set('copysafe_web_protection_mode', $mode);
+  $browser = $form_state['values']['browser'];
+  variable_set('copysafe_web_protection_browser', $browser);
+  drupal_flush_all_caches();
+  drupal_set_message(t('The form has been submitted.'));
+}
+
+/**
+ * Implements hook_filter_info().
+ */
+function copysafe_web_protection_filter_info() {
+
+  $filters['copysafe_web_protection_strip'] = array(
+    'title' => t('Copysafe Web Protection'),
+    'description' => t('Enable CopySafeWeb tag replacement.'),
+    'prepare callback' => 'copysafe_web_protection_filter_strip',
+    'tips callback' => 'copysafe_web_protection_filter_strip_tips',
+    'cache' => FALSE,
+  );
+
+  return $filters;
+}
+
+/**
+ * Function() for CopySafe Web Tag Replacement.
+ */
+function copysafe_web_protection_filter_strip($text, $filter, $format, $langcode, $cache, $cache_id) {
+
+  if (preg_match_all('/\[copysafe_web_protection[^\]]+\]/i', $text, $matches)) {
+    drupal_add_js(drupal_get_path('module', 'copysafe_web_protection') . '/copysafe_web_protection.js');
+    foreach ($matches[0] as $matched) {
+      $img = array();
+      preg_match_all('/(height|width|name|border|border_color|text_color|loading_message|hyperlink|target|keyboard|menus|capture|remote)=([\'|"][^\']*[\'|"])/i', $matched, $img);
+      $atts = array();
+      for ($i = 0; $i < count($img[1]); $i++) {
+        $atts[$img[1][$i]] = $img[2][$i];
+      }
+
+      static $embed_id;
+
+      if (!isset($embed_id)) {
+        $embed_id = 0;
+      }
+
+      $csw_id = "copysafe_web_protection_id" . $embed_id;
+
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['mode'] = variable_get('copysafe_web_protection_mode', '');
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['height'] = (isset($atts['height'])) ? str_replace("'", "", $atts['height']) : '';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['width'] = (isset($atts['width'])) ? str_replace("'", "", $atts['width']) : '';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['name'] = str_replace("'", "", $atts['name']);
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['border'] = (isset($atts['border'])) ? str_replace("'", "", $atts['border']) : 0;
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['border_color'] = (isset($atts['border_color'])) ? str_replace("'", "", $atts['border_color']) : '#fff';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['text_color'] = (isset($atts['text_color'])) ? str_replace("'", "", $atts['text_color']) : '#000';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['loading_message'] = (isset($atts['loading_message'])) ? str_replace("'", "", $atts['loading_message']) : 'loading';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['hyperlink'] = (isset($atts['hyperlink'])) ? str_replace("'", "", $atts['hyperlink']) : 'copysafe_web_protection';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['target'] = (isset($atts['target'])) ? str_replace("'", "", $atts['target']) : 'target';
+
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['keyboard'] = (isset($atts['keyboard'])) ? str_replace("'", "", $atts['keyboard']) : 0;
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['capture'] = (isset($atts['capture'])) ? str_replace("'", "", $atts['capture']) : 0;
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['menus'] = (isset($atts['menus'])) ? str_replace("'", "", $atts['menus']) : 0;
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['remote'] = (isset($atts['remote'])) ? str_replace("'", "", $atts['remote']) : 0;
+
+      $default = array(
+        'ie' => 'ie',
+        'firefox' => 'firefox',
+        'chrome' => 'chrome',
+        'navigator' => 'navigator',
+        'opera' => 'opera',
+        'safari' => 'safari',
+      );
+      $browser = variable_get('copysafe_web_protection_browser', $default);
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['name'] = str_replace("'", "", $atts["name"]);
+      $filename  = str_replace("'", "", $atts["name"]);
+
+      global $base_url;
+      $upload_folder = variable_get('file_public_path', conf_path() . '/files') . "/" . variable_get('copysafe_web_protection_uploadfolder', 'upload_folder/copysafe_web_protection') . "/";
+
+      if (!file_exists($upload_folder . $filename)) {
+        return "<div style='padding:5px 10px;background-color:#fffbcc'><strong>File($filename) don't exist</strong></div>";
+      }
+
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['chrome'] = "";
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['firefox'] = "";
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['navigator'] = "";
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['opera'] = "";
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['safari'] = "";
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['msie'] = "";
+
+      if (isset($browser['chrome'])) {
+        if ($browser['chrome'] === "chrome") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['chrome'] = 1;
+        }
+      }
+      if (isset($browser['firefox'])) {
+        if ($browser['firefox'] === "firefox") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['firefox'] = 1;
+        }
+      }
+      if (isset($browser['navigator'])) {
+        if ($browser['navigator'] === "navigator") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['navigator'] = 1;
+        }
+      }
+      if (isset($browser['opera'])) {
+        if ($browser['opera'] === "opera") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['opera'] = 1;
+        }
+      }
+      if (isset($browser['safari'])) {
+        if ($browser['safari'] === "safari") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['safari'] = 1;
+        }
+      }
+      if (isset($browser['ie'])) {
+        if ($browser['ie'] === "ie") {
+          $settings['copysafe_web_protection']['embed_options'][$csw_id]['msie'] = 1;
+        }
+      }
+
+      $plugin_url = $base_url . '/' . drupal_get_path('module', 'copysafe_web_protection') . '/';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['plugin_url'] = $base_url . '/' . drupal_get_path('module', 'copysafe_web_protection') . '/';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['plugin_path'] = $base_url . '/' . drupal_get_path('module', 'copysafe_web_protection') . '/';
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['upload_path'] = $base_url . '/' . $upload_folder;
+      $settings['copysafe_web_protection']['embed_options'][$csw_id]['upload_url'] = $base_url . '/' . $upload_folder;
+      drupal_add_js($settings, array('type' => 'setting'));
+      drupal_add_js(array('copysafe_web_protection' => array()), 'setting');
+
+      static $inc;
+
+      if (!isset($inc)) {
+        $inc = 0;
+      }
+      $outputid = "output" . $inc;
+
+      $output = <<<html
+            <NOSCRIPT><meta http-equiv="refresh" content="0;url={$plugin_url}download_javascript.html"></NOSCRIPT>
+            <div id = $outputid>
+            </div>
+html;
+
+      $text = copysafe_web_protection_str_replace_once($matched, $output, $text);
+      $embed_id++;
+      $inc = $inc + 1;
+    }
+  }
+  return $text;
+}
+
+/**
+ * Function() for CopySafe Web String Replacement.
+ */
+function copysafe_web_protection_str_replace_once($str_pattern, $str_replacement, $string) {
+
+  if (strpos($string, $str_pattern) !== FALSE) {
+    return substr_replace($string, $str_replacement, strpos($string, $str_pattern), strlen($str_pattern));
+  }
+
+  return $string;
+}
+
+/**
+ * Function() for CopySafe Web Strip MS Tags.
+ */
+function copysafe_web_protection_filter_strip_tips($filter, $format, $long) {
+  return t('HTML header tags generated by Microsoft Office are stripped');
+}

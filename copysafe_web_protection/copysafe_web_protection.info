@@ -1,0 +1,6 @@
+name = "Copysafe Web Protection"
+description = "CopySafe Web"
+package = "CopySafe Web"
+core = 7.x
+
+dependencies[] = ctools
