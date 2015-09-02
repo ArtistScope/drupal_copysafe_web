@@ -29,6 +29,7 @@ INSTALLATION
 
 CONFIGURATION
 ----------------------------
+
 * Enable CopySafe Web as above and #4.
 * Add Upload Folder and other settings in Administration » Configuration » Media » CopySafe Web » CopySafe Web Settings.
 
