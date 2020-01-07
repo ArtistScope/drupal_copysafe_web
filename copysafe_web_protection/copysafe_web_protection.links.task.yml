@@ -1,0 +1,8 @@
+copysafe_web_protection.copysafe_web:
+  title: CopySafe Web
+  route_name: copysafe_web_protection.copysafe_web
+  base_route: copysafe_web_protection.admin_config_system
+copysafe_web_protection.copysafe_web_settings:
+  title: CopySafe Web Settings
+  route_name: copysafe_web_protection.copysafe_web_settings
+  base_route: copysafe_web_protection.admin_config_system

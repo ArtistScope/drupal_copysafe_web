@@ -1,0 +1,49 @@
+# Schema for the configuration files of the copysafe_web_protection module.
+
+copysafe_web_protection.settings:
+  type: config_object
+  label: 'Copysafe Web Settings'
+  mapping:
+    uploadfolder:
+      type: string
+      label: 'Upload Folder'
+    size:
+      type: string
+      label: 'Max Upload Size'
+    mode:
+      type: string
+      label: 'Mode'
+    browser:
+      type: sequence
+      label: 'Browser'
+copysafe_web_protection.class_settings:
+  type: config_object
+  label: 'Copysafe Web Class Settings'
+  mapping:
+    filename:
+      type: string
+      label: 'File name'
+    width:
+      type: string
+      label: 'Width'
+    height:
+      type: string
+      label: 'Height'
+    bordersize:
+      type: string
+      label: 'Border Size'
+    bordercolor:
+      type: string
+      label: 'Border Color'
+    loading:
+      type: string
+      label: 'Loading message'
+    hyperlink:
+      type: string
+      label: 'Hyperlink'
+    target:
+      type: string
+      label: 'Target Frame'
+    prevent:
+      type: sequence
+      label: 'Browser'

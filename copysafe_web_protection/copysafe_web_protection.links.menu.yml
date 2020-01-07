@@ -1,0 +1,18 @@
+copysafe_web_protection.admin_config_system:
+  title: 'CopySafe Settings'
+  route_name: copysafe_web_protection.admin_config_system
+  parent: system.admin_config
+  description: 'Configure basic copy safe settings.'
+  weight: 10
+copysafe_web_protection.copysafe_web:
+  title: 'CopySafe Web'
+  parent: copysafe_web_protection.admin_config_system
+  description: 'Copy protect images and other web page media. Safe from all copy including Print Screen and screen capture.'
+  route_name: copysafe_web_protection.copysafe_web
+  weight: -10
+copysafe_web_protection.copysafe_web_settings:
+  title: 'CopySafe Web Settings'
+  parent: copysafe_web_protection.admin_config_system
+  description: 'Manage CopySafe Web Settings.'
+  route_name: copysafe_web_protection.copysafe_web_settings
+  weight: -9

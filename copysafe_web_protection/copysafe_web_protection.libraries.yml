@@ -1,0 +1,8 @@
+copysafe_web_protection:
+  version: 1.0
+  js:
+    js/copysafe_web_protection.js: {}
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - core/drupalSettings

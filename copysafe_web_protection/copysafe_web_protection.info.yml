@@ -1,0 +1,5 @@
+name: Copysafe Web Protection
+type: module
+description: 'CopySafe Web'
+package: CopySafe Web
+core: 8.x

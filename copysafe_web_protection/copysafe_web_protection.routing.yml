@@ -1,0 +1,49 @@
+copysafe_web_protection.admin_config_system:
+  path: '/admin/config/copysafe'
+  defaults:
+    _controller: '\Drupal\system\Controller\SystemController::systemAdminMenuBlockPage'
+    _title: 'CopySafe Settings'
+  requirements:
+    _permission: 'access administration pages'
+
+copysafe_web_protection.copysafe_web:
+  path: '/admin/config/copysafe/copysafe_web_protection'
+  defaults:
+    _form: 'Drupal\copysafe_web_protection\Form\CopySafeWebConfig'
+    _title: 'CopySafe Web'
+  requirements:
+    _permission: 'administer site configuration'
+
+copysafe_web_protection.copysafe_web_settings:
+  path: '/admin/config/copysafe/copysafe_web_settings'
+  defaults:
+    _form: 'Drupal\copysafe_web_protection\Form\CopySafeWebSettings'
+    _title: 'CopySafe Web Settings'
+  requirements:
+    _permission: 'administer site configuration'
+
+copysafe_web_protection.copysafe_web_file_delete:
+  path: 'admin/config/copysafe/file_delete/{fid}'
+  defaults:
+    _form: 'Drupal\copysafe_web_protection\Form\CopySafeWebFileDelete'
+    _title: 'CopySafe Web File Delete'
+  requirements:
+    _permission: 'administer site configuration'
+
+copysafe_web_protection.copysafe_web_class:
+  path: '/copysafe_web_protection/form/{fid}'
+  defaults:
+    _form: 'Drupal\copysafe_web_protection\Form\CopySafeWebClass'
+    _title: 'AJAX modal dialog'
+  requirements:
+    _permission: 'administer site configuration'
+
+copysafe_web_protection.open_embed_options_form:
+  path: '/copysafe_web_protection/embed_options/{fid}'
+  defaults:
+    _title: 'Embed Option Form'
+    _controller: '\Drupal\copysafe_web_protection\Controller\CopySafeController::openEmbedOptionsModalForm'
+  requirements:
+    _permission: 'administer site configuration'
+  options:
+    _admin_route: TRUE
